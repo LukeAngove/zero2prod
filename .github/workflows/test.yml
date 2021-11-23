@@ -1,0 +1,15 @@
+name: zero2prod-ci
+on: [push]
+jobs:
+  cargo-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --all-features --no-fail-fast
+    - uses: actions-rs/tarpaulin@v0.1
