@@ -2,7 +2,7 @@ mod common;
 
 #[actix_rt::test]
 async fn health_check_works() {
-    let app= common::spawn_app().await;
+    let app = common::spawn_app().await;
 
     let client = reqwest::Client::new();
 

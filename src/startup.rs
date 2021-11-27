@@ -1,15 +1,12 @@
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
-use std::net::TcpListener;
 use sqlx::PgPool;
+use std::net::TcpListener;
 
 use crate::routes::health_check;
 use crate::routes::subscribe;
 
-pub fn run(
-    listener: TcpListener,
-    db: PgPool,
-) -> Result<Server, std::io::Error> {
+pub fn run(listener: TcpListener, db: PgPool) -> Result<Server, std::io::Error> {
     let db = web::Data::new(db);
     let server = HttpServer::new(move || {
         App::new()
@@ -21,4 +18,3 @@ pub fn run(
     .run();
     Ok(server)
 }
-
