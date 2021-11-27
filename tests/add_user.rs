@@ -1,23 +1,14 @@
 mod common;
 
-use sqlx::{Connection, PgConnection};
-use zero2prod::configuration::get_configuration;
-
 #[actix_rt::test]
 async fn subscribe_returns_200_for_valid_form_data() {
-    let app_address = common::spawn_app();
-    let configuration = get_configuration().expect("Failed to read configuration.");
-    let db_connection_string = configuration.database.connection_string();
-
-    let mut db_connection = PgConnection::connect(&db_connection_string)
-        .await
-        .expect("Failed to connect to Postgres.");
+    let app = common::spawn_app().await;
 
     let client = reqwest::Client::new();
     let params = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     let response = client
-        .get(&format!("{}/subscriptions", &app_address))
+        .post(&format!("{}/subscriptions", &app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(params)
         .send()
@@ -27,7 +18,7 @@ async fn subscribe_returns_200_for_valid_form_data() {
     assert_eq!(200, response.status().as_u16());
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
-        .fetch_one(&mut db_connection)
+        .fetch_one(&app.db_pool)
         .await
         .expect("Failed to fetch saved subscription.");
 
@@ -37,7 +28,7 @@ async fn subscribe_returns_200_for_valid_form_data() {
 
 #[actix_rt::test]
 async fn subscribe_returns_400_for_missing_data() {
-    let address = common::spawn_app();
+    let app = common::spawn_app().await;
     let client = reqwest::Client::new();
 
     let test_cases = vec![
@@ -48,7 +39,7 @@ async fn subscribe_returns_400_for_missing_data() {
 
     for (params, error_message) in test_cases {
         let response = client
-            .get(&format!("{}/subscriptions", &address))
+            .post(&format!("{}/subscriptions", &app.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(params)
             .send()
