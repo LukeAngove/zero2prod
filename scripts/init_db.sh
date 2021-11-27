@@ -17,11 +17,12 @@ DB_USER=${POSTGRES_USER:=postgres}
 DB_PASSWORD="${POSTGRES_PASSWORD:=password}"
 DB_NAME="${POSTGRES_DB:=newsletter}"
 DB_PORT="${POSTGRES_PORT:=5432}"
+CRUNTIME="${CRUNTIME:=docker}"
 
-if [ ! "$(podman ps --quiet --format name=${DB_CONTAINER_NAME})" ]
+if [[ -z ${FORCE_SKIP_START_CONTAINER} ]] && [ ! "$(${CRUNTIME} ps --quiet --format name=${DB_CONTAINER_NAME})" ]
 then
     # Container only used for testing, remove after stopped.
-    podman run \
+    ${CRUNTIME} run \
         --detach \
         --rm \
         --env POSTGRES_USER=${DB_USER} \
@@ -34,7 +35,14 @@ then
 fi
 
 export PGPASSWORD="${DB_PASSWORD}"
-until podman exec "${DB_CONTAINER_NAME}" psql -h "localhost" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q';
+if [[ -z ${FORCE_SKIP_START_CONTAINER} ]]
+then
+    PSQL="${CRUNTIME} exec ${DB_CONTAINER_NAME} psql"
+else
+    PSQL="psql"
+fi
+
+until ${PSQL} -h "localhost" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q';
 do
     >&2 echo "Postgres is still unavailable - sleeping"
     sleep 1

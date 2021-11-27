@@ -1,24 +1,105 @@
 name: zero2prod-ci
 on: [push]
+env:
+  CARGO_TERM_COLOR: always
 jobs:
   cargo-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:12
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        ports:
+        - 5432:5432
+    env:
+      SQLX_VERSION: 0.5.5
+      SQLX_FEATURES: postgres
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Cache dependencies
+      id: cache-dependencies
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install toolchain
+      uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
-    - uses: actions-rs/cargo@v1
+        profile: minimal
+        override: true
+
+    - name: Cache sqlx-cli
+      uses: actions/cache@v2
+      id: cache-sqlx
+      with:
+        path: |
+          ~/.cargo/bin/sqlx
+        key: ${{ runner.os }}-sqlx-${{ env.SQLX_VERSION }}-${{ env.SQLX_FEATURES }}
+
+    - name: Install sqlx-cli
+      uses: actions-rs/cargo@v1
+      if: steps.cache-sqlx.outputs.cache-hit == false
+      with:
+        command: install
+        args: >
+          sqlx-cli
+          --force
+          --version=${{ env.SQLX_VERSION }}
+          --features=${{ env.SQLX_FEATURES }}
+          --no-default-features
+          --locked
+
+    - name: Set up database
+      run: |
+        sudo apt-get install libpq-dev -y
+        FORCE_SKIP_START_CONTAINER=true ./scripts/init_db.sh
+
+    - name: Run tests
+      uses: actions-rs/cargo@v1
       with:
         command: test
         args: --all-features --no-fail-fast
-    - uses: actions-rs/tarpaulin@v0.1
+
+    - name: Run coverage
+      uses: actions-rs/tarpaulin@v0.1
+      with:
+        args: '--ignore-tests --avoid-cfg-tarpaulin'
+
     - name: Upload to codecov.io
       uses: codecov/codecov-action@v1.0.2
       with:
         token: ${{secrets.CODECOV_TOKEN}}
+
     - name: Archive code coverage results
       uses: actions/upload-artifact@v1
       with:
         name: code-coverage-report
         path: cobertura.xml
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Setup tools
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt
+    - name: Run rustfmt
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check

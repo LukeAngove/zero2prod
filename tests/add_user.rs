@@ -1,14 +1,23 @@
 mod common;
 
+use sqlx::{Connection, PgConnection};
+use zero2prod::configuration::get_configuration;
+
 #[actix_rt::test]
 async fn subscribe_returns_200_for_valid_form_data() {
-    let address = common::spawn_app();
+    let app_address = common::spawn_app();
+    let configuration = get_configuration().expect("Failed to read configuration.");
+    let db_connection_string = configuration.database.connection_string();
+
+    let mut db_connection = PgConnection::connect(&db_connection_string)
+        .await
+        .expect("Failed to connect to Postgres.");
 
     let client = reqwest::Client::new();
-    let params= "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    let params = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     let response = client
-        .get(&format!("{}/subscriptions", &address))
+        .get(&format!("{}/subscriptions", &app_address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(params)
         .send()
@@ -16,6 +25,14 @@ async fn subscribe_returns_200_for_valid_form_data() {
         .expect("Failed to execute request");
 
     assert_eq!(200, response.status().as_u16());
+
+    let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
+        .fetch_one(&mut db_connection)
+        .await
+        .expect("Failed to fetch saved subscription.");
+
+    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
+    assert_eq!(saved.name, "le guin");
 }
 
 #[actix_rt::test]
@@ -38,9 +55,11 @@ async fn subscribe_returns_400_for_missing_data() {
             .await
             .expect("Failed to execute request");
 
-        assert_eq!(400, response.status().as_u16(),
-        "The API did not fail with 400 Bad Request when the payload was {}",
-        error_message);
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not fail with 400 Bad Request when the payload was {}",
+            error_message
+        );
     }
 }
-
